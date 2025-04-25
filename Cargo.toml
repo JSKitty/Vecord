@@ -3,7 +3,7 @@ name = "vecord"
 version = "0.1.0"
 edition = "2021"
 description = "A bridge bot between Discord and Nostr"
-authors = ["You <you@example.com>"]
+authors = ["JSKitty <mail@jskitty.cat>"]
 
 [dependencies]
 # Discord
