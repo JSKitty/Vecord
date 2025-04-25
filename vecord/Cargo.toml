@@ -1,0 +1,22 @@
+[package]
+name = "vecord"
+version = "0.1.0"
+edition = "2021"
+description = "A bridge bot between Discord and Nostr"
+authors = ["You <you@example.com>"]
+
+[dependencies]
+# Discord
+serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
+
+# Nostr
+nostr-sdk = { version = "0.41", features = ["nip04", "nip06", "nip44", "nip59", "nip96"] }
+
+# Async runtime
+tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }
+
+# Utilities
+dotenvy = "0.15"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+anyhow = "1.0"
