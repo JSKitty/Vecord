@@ -35,7 +35,7 @@ impl EventHandler for Handler {
         }
 
         // Ignore system messages
-        if msg.kind != MessageType::Regular {
+        if msg.kind != MessageType::Regular && msg.kind != MessageType::InlineReply {
             return;
         }
 
