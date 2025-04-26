@@ -8,6 +8,7 @@ pub struct Config {
     pub nostr_private_key: String,
     pub nostr_relays: Vec<String>,
     pub subscribers_file: Option<String>,
+    pub metadata_cache_file: Option<String>,
 }
 
 impl Config {
@@ -38,12 +39,23 @@ impl Config {
         // Optional file to persist subscribers
         let subscribers_file = env::var("SUBSCRIBERS_FILE").ok();
         
+        // Optional file to cache user metadata
+        let metadata_cache_file = env::var("METADATA_CACHE_FILE").ok().or_else(|| {
+            // Default to a file in the same directory as subscribers if it exists
+            subscribers_file.as_ref().map(|s| {
+                let path = std::path::Path::new(s);
+                let dir = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+                dir.join("metadata_cache.json").to_string_lossy().to_string()
+            })
+        });
+        
         Ok(Self {
             discord_token,
             discord_channel_id,
             nostr_private_key,
             nostr_relays,
             subscribers_file,
+            metadata_cache_file,
         })
     }
 }

@@ -1,4 +1,6 @@
 use crate::config::Config;
+use crate::message::{BridgeMessage, NostrMessageMetadata};
+use crate::metadata::{MetadataCache, UserMetadata};
 use anyhow::{Result, anyhow};
 use nostr_sdk::{
     Client, ClientBuilder, Filter, FromBech32, Keys, Kind, Options, PublicKey, SecretKey, ToBech32,
@@ -121,6 +123,7 @@ pub struct NostrClient {
     keys: Keys,
     relays: Vec<String>,
     subscribers: SubscriberList,
+    metadata_cache: MetadataCache,
     client: Option<Client>,
 }
 
@@ -133,18 +136,22 @@ impl NostrClient {
         // Initialize subscriber list with optional file path
         let subscribers = SubscriberList::new(config.subscribers_file.clone())?;
         
+        // Initialize metadata cache
+        let metadata_cache = MetadataCache::new(config.metadata_cache_file.clone())?;
+        
         Ok(Self {
             keys,
             relays: config.nostr_relays.clone(),
             subscribers,
+            metadata_cache,
             client: None,
         })
     }
 
     pub async fn start(
         &mut self,
-        discord_sender: mpsc::Sender<String>,
-    ) -> Result<mpsc::Sender<String>> {
+        discord_sender: mpsc::Sender<BridgeMessage>,
+    ) -> Result<mpsc::Sender<BridgeMessage>> {
         // Create a new client builder with our keys
         let client = ClientBuilder::new().signer(self.keys.clone()).opts(Options::new().gossip(false)).build();
         
@@ -160,7 +167,7 @@ impl NostrClient {
         tokio::time::sleep(Duration::from_secs(1)).await;
         
         // Create a channel for sending messages to Nostr
-        let (nostr_sender, mut nostr_receiver) = mpsc::channel::<String>(100);
+        let (nostr_sender, mut nostr_receiver) = mpsc::channel::<BridgeMessage>(100);
         
         // Clone client for the sender task
         let client_clone = client.clone();
@@ -169,14 +176,19 @@ impl NostrClient {
         // Spawn a task to handle sending messages from Discord to Nostr
         tokio::spawn(async move {
             while let Some(message) = nostr_receiver.recv().await {
-                // Get current list of subscribers
-                let subscribers = subscribers_clone.get_all();
-                
-                for pubkey in subscribers {
-                    if let Err(e) = client_clone.send_private_msg(pubkey, &message, []).await {
-                        error!("Error sending private message to Nostr user {}: {}", pubkey, e);
-                    } else {
-                        info!("Sent Discord message to Nostr user: {}", pubkey);
+                if let BridgeMessage::Discord { author, content } = message {
+                    // Format the message for Nostr
+                    let nostr_message = format!("[Discord] {}: {}", author, content);
+                    
+                    // Get current list of subscribers
+                    let subscribers = subscribers_clone.get_all();
+                    
+                    for pubkey in subscribers {
+                        if let Err(e) = client_clone.send_private_msg(pubkey, &nostr_message, []).await {
+                            error!("Error sending private message to Nostr user {}: {}", pubkey, e);
+                        } else {
+                            info!("Sent Discord message to Nostr user: {}", pubkey);
+                        }
                     }
                 }
             }
@@ -195,6 +207,7 @@ impl NostrClient {
         
         // Clone for the notification handler
         let subscribers_clone = self.subscribers.clone();
+        let metadata_cache_clone = self.metadata_cache.clone();
         let client_clone = client.clone();
         
         // Spawn a task to handle incoming Nostr private messages
@@ -270,18 +283,38 @@ impl NostrClient {
                             
                             // Only relay messages from subscribed users
                             if subscribers_clone.contains(&sender_pubkey) {
-                                // Format the message for Discord
-                                let author = sender_pubkey.to_bech32().unwrap_or_else(|_| 
-                                    sender_pubkey.to_string()
-                                );
+                                // Try to fetch user metadata
+                                let metadata = match metadata_cache_clone.fetch_metadata(&client, &sender_pubkey).await {
+                                    Ok(metadata) => metadata,
+                                    Err(e) => {
+                                        error!("Failed to fetch metadata for {}: {}", sender_pubkey, e);
+                                        // Create a default metadata entry if fetch fails
+                                        UserMetadata::new(&sender_pubkey)
+                                    }
+                                };
                                 
-                                let discord_message = format!("[Nostr DM] {}: {}", author, message_content);
+                                // Get the best username for display
+                                let username = metadata.get_best_name();
+                                
+                                // Create metadata for the message
+                                let pubkey_str = sender_pubkey.to_bech32().unwrap_or_else(|_| sender_pubkey.to_string());
+                                let message_metadata = NostrMessageMetadata {
+                                    username: username.clone(),
+                                    pubkey: pubkey_str,
+                                    avatar_url: metadata.picture,
+                                };
+                                
+                                // Create the bridge message
+                                let bridge_message = BridgeMessage::Nostr {
+                                    content: message_content.to_string(),
+                                    metadata: message_metadata,
+                                };
                                 
                                 // Send the decrypted message to Discord
-                                if let Err(e) = discord_sender.send(discord_message).await {
+                                if let Err(e) = discord_sender.send(bridge_message).await {
                                     error!("Error forwarding message to Discord: {}", e);
                                 } else {
-                                    info!("Forwarded Nostr DM to Discord from: {}", author);
+                                    info!("Forwarded Nostr DM to Discord from: {}", username);
                                 }
                             } else {
                                 // Inform the user they need to subscribe first

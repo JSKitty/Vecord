@@ -1,9 +1,10 @@
 mod handler;
 
 use crate::config::Config;
+use crate::message::{BridgeMessage, NostrMessageMetadata};
 use anyhow::Result;
 use serenity::all::{
-    ChannelId, Client, CreateMessage, GatewayIntents, Http,
+    ChannelId, Client, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GatewayIntents, Http
 };
 use std::sync::Arc;
 use tokio::sync::mpsc;
@@ -28,7 +29,7 @@ impl DiscordBot {
 
     pub async fn start(
         &self,
-        message_sender: mpsc::Sender<String>,
+        message_sender: mpsc::Sender<BridgeMessage>,
     ) -> Result<()> {
         // Configure intents to receive message events
         let intents = GatewayIntents::GUILD_MESSAGES 
@@ -48,10 +49,39 @@ impl DiscordBot {
         Ok(())
     }
 
-    pub async fn send_message(&self, content: &str) -> Result<()> {
-        self.channel_id
-            .send_message(&self.http, CreateMessage::new().content(content))
-            .await?;
+    pub async fn send_message(&self, message: &BridgeMessage) -> Result<()> {
+        match message {
+            BridgeMessage::Nostr { content, metadata } => {
+                // Create a message builder
+                let msg = CreateMessage::new();
+                
+                // Create a rich embed
+                let mut embed = CreateEmbed::new();
+                embed = embed.description(content);
+                // Create a footer text without using the closure
+                embed = embed.footer(serenity::all::CreateEmbedFooter::new(metadata.pubkey.clone()));
+                embed = embed.color(Colour::from_rgb(89, 252, 179));
+                
+                // Add thumbnail if avatar is available
+                if let Some(avatar_url) = &metadata.avatar_url {
+                    embed = embed.author(CreateEmbedAuthor::new(metadata.username.clone()).icon_url(avatar_url));
+                }
+                
+                // Send with rich embed
+                self.channel_id
+                    .send_message(&self.http, msg.embed(embed))
+                    .await?;
+            },
+            
+            BridgeMessage::Discord { author, content } => {
+                // This shouldn't happen, but handle it gracefully
+                self.channel_id
+                    .send_message(&self.http, CreateMessage::new()
+                        .content(format!("[Discord] {}: {}", author, content)))
+                    .await?;
+            }
+        }
+        
         Ok(())
     }
 }

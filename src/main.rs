@@ -1,6 +1,10 @@
 mod config;
 mod discord;
+mod message;
+mod metadata;
 mod nostr;
+
+use message::BridgeMessage;
 
 use anyhow::Result;
 use config::Config;
@@ -20,8 +24,8 @@ async fn main() -> Result<()> {
     info!("Configuration loaded");
 
     // Create bi-directional channels for message passing
-    let (discord_to_nostr_tx, mut discord_to_nostr_rx) = mpsc::channel::<String>(100);
-    let (nostr_to_discord_tx, mut nostr_to_discord_rx) = mpsc::channel::<String>(100);
+    let (discord_to_nostr_tx, mut discord_to_nostr_rx) = mpsc::channel::<BridgeMessage>(100);
+    let (nostr_to_discord_tx, mut nostr_to_discord_rx) = mpsc::channel::<BridgeMessage>(100);
 
     // Initialize Discord bot
     let discord_bot = DiscordBot::new(&config);
