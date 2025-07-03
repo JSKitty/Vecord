@@ -4,9 +4,9 @@ use crate::metadata::{MetadataCache, UserMetadata};
 use anyhow::{Result, anyhow};
 use nostr_sdk::{
     Client, ClientBuilder, Filter, FromBech32, Keys, Kind, Options, PublicKey, SecretKey, ToBech32,
-    nips::nip59::UnwrappedGift
+    nips::nip59::UnwrappedGift, Tag, TagKind
 };
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::str::FromStr;
 use std::collections::HashSet;
 use std::sync::{Arc, Mutex};
@@ -127,6 +127,33 @@ pub struct NostrClient {
     client: Option<Client>,
 }
 
+/// Helper function to send a private message with millisecond timestamp tag
+async fn send_private_msg_with_ms(
+    client: &Client,
+    recipient: PublicKey,
+    content: &str,
+) -> Result<()> {
+    // Get current time duration since Unix epoch
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| anyhow!("SystemTime error: {}", e))?;
+    
+    // Extract just the milliseconds component (0-999)
+    let milliseconds = duration.as_millis() % 1000;
+    
+    // Create the custom millisecond tag
+    let ms_tag = Tag::custom(
+        TagKind::custom("ms"),
+        [milliseconds.to_string()],
+    );
+    
+    // Send private message with the millisecond tag
+    client.send_private_msg(recipient, content, [ms_tag]).await
+        .map_err(|e| anyhow!("Failed to send private message: {}", e))?;
+    
+    Ok(())
+}
+
 impl NostrClient {
     pub fn new(config: &Config) -> Result<Self> {
         // Create keys from secret key
@@ -184,7 +211,7 @@ impl NostrClient {
                     let subscribers = subscribers_clone.get_all();
                     
                     for pubkey in subscribers {
-                        if let Err(e) = client_clone.send_private_msg(pubkey, &nostr_message, []).await {
+                        if let Err(e) = send_private_msg_with_ms(&client_clone, pubkey, &nostr_message).await {
                             error!("Error sending private message to Nostr user {}: {}", pubkey, e);
                         } else {
                             info!("Sent Discord message to Nostr user: {}", pubkey);
@@ -239,17 +266,17 @@ impl NostrClient {
                                 if subscribers_clone.add(sender_pubkey) {
                                     info!("New subscriber: {}", sender_pubkey);
                                     // Send confirmation
-                                    let _ = client_clone.send_private_msg(
+                                    let _ = send_private_msg_with_ms(
+                                        &client_clone,
                                         sender_pubkey, 
-                                        "You are now subscribed to the Discord channel. You will receive all messages from the Discord channel. Send !unsubscribe to stop receiving messages.", 
-                                        []
+                                        "You are now subscribed to the Discord channel. You will receive all messages from the Discord channel. Send !unsubscribe to stop receiving messages."
                                     ).await;
                                 } else {
                                     // Already subscribed
-                                    let _ = client_clone.send_private_msg(
+                                    let _ = send_private_msg_with_ms(
+                                        &client_clone,
                                         sender_pubkey, 
-                                        "You are already subscribed to the Discord channel.", 
-                                        []
+                                        "You are already subscribed to the Discord channel."
                                     ).await;
                                 }
                                 continue;
@@ -257,26 +284,26 @@ impl NostrClient {
                                 if subscribers_clone.remove(&sender_pubkey) {
                                     info!("Unsubscribed: {}", sender_pubkey);
                                     // Send confirmation
-                                    let _ = client_clone.send_private_msg(
+                                    let _ = send_private_msg_with_ms(
+                                        &client_clone,
                                         sender_pubkey, 
-                                        "You have been unsubscribed from the Discord channel. You will no longer receive messages.", 
-                                        []
+                                        "You have been unsubscribed from the Discord channel. You will no longer receive messages."
                                     ).await;
                                 } else {
                                     // Not subscribed
-                                    let _ = client_clone.send_private_msg(
+                                    let _ = send_private_msg_with_ms(
+                                        &client_clone,
                                         sender_pubkey, 
-                                        "You are not currently subscribed to the Discord channel.", 
-                                        []
+                                        "You are not currently subscribed to the Discord channel."
                                     ).await;
                                 }
                                 continue;
                             } else if message_content == "!help" {
                                 // Send help information
-                                let _ = client_clone.send_private_msg(
+                                let _ = send_private_msg_with_ms(
+                                    &client_clone,
                                     sender_pubkey, 
-                                    "Available commands:\n!subscribe - Start receiving Discord messages\n!unsubscribe - Stop receiving Discord messages\n!help - Show this help message", 
-                                    []
+                                    "Available commands:\n!subscribe - Start receiving Discord messages\n!unsubscribe - Stop receiving Discord messages\n!help - Show this help message"
                                 ).await;
                                 continue;
                             }
@@ -318,10 +345,10 @@ impl NostrClient {
                                 }
                             } else {
                                 // Inform the user they need to subscribe first
-                                let _ = client_clone.send_private_msg(
+                                let _ = send_private_msg_with_ms(
+                                    &client_clone,
                                     sender_pubkey, 
-                                    "Your message was not forwarded to Discord because you're not subscribed. Send !subscribe to start forwarding your messages.", 
-                                    []
+                                    "Your message was not forwarded to Discord because you're not subscribed. Send !subscribe to start forwarding your messages."
                                 ).await;
                                 info!("Ignored message from non-subscribed user: {}", sender_pubkey);
                             }
