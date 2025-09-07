@@ -1,4 +1,4 @@
-use crate::message::BridgeMessage;
+use crate::message::{BridgeMessage, ImageAttachment};
 use serenity::all::{
     ChannelId, Context, EventHandler, Message, MessageType, Ready,
 };
@@ -40,12 +40,53 @@ impl EventHandler for Handler {
             return;
         }
 
+        // Optional first image attachment (we currently support a single image)
+        let mut image: Option<ImageAttachment> = None;
+
+        if let Some(att) = msg.attachments.iter().find(|a| {
+            if let Some(ct) = &a.content_type {
+                ct.starts_with("image/")
+            } else {
+                let fname = a.filename.to_lowercase();
+                fname.ends_with(".png")
+                    || fname.ends_with(".jpg")
+                    || fname.ends_with(".jpeg")
+                    || fname.ends_with(".gif")
+                    || fname.ends_with(".webp")
+            }
+        }) {
+            // Determine extension from filename or content_type
+            let ext = att
+                .filename
+                .rsplit('.')
+                .next()
+                .map(|s| s.to_lowercase())
+                .or_else(|| {
+                    att.content_type
+                        .as_deref()
+                        .and_then(|ct| ct.split('/').nth(1))
+                        .map(|s| s.to_lowercase())
+                })
+                .unwrap_or_else(|| "png".to_string());
+
+            // Download the attachment bytes
+            if let Ok(resp) = reqwest::get(att.url.clone()).await {
+                if let Ok(bytes) = resp.bytes().await {
+                    image = Some(ImageAttachment {
+                        bytes: bytes.to_vec(),
+                        extension: ext,
+                    });
+                }
+            }
+        }
+
         // Create a BridgeMessage for Nostr
         let author_name = msg.author.name.clone();
         let content = msg.content.clone();
         let bridge_message = BridgeMessage::Discord {
             author: author_name,
             content,
+            image,
         };
 
         // Send the message to be bridged to Nostr

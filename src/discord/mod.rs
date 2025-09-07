@@ -73,7 +73,7 @@ impl DiscordBot {
                     .await?;
             },
             
-            BridgeMessage::Discord { author, content } => {
+            BridgeMessage::Discord { author, content, .. } => {
                 // This shouldn't happen, but handle it gracefully
                 self.channel_id
                     .send_message(&self.http, CreateMessage::new()

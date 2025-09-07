@@ -16,7 +16,7 @@ use tokio::sync::mpsc;
 use tracing::{error, info};
 
 // Vector SDK
-use vector_sdk::VectorBot;
+use vector_sdk::{VectorBot, AttachmentFile};
 
 /// Helper function to parse a pubkey from either bech32 or hex format
 fn parse_pubkey(key_str: &str) -> Result<PublicKey> {
@@ -189,18 +189,35 @@ impl NostrClient {
         // Spawn a task to handle sending messages from Discord to Nostr
         tokio::spawn(async move {
             while let Some(message) = nostr_receiver.recv().await {
-                if let BridgeMessage::Discord { author, content } = message {
-                    // Format the message for Nostr
+                if let BridgeMessage::Discord { author, content, image } = message {
+                    // Prepare text content
                     let nostr_message = format!("[Discord] {}: {}", author, content);
 
-                    // Get current list of subscribers
+                    // Get subscribers snapshot
                     let subscribers = subscribers_clone.get_all();
 
                     for pubkey in subscribers {
                         // Use Vector SDK Channel API
                         let chat = bot_clone.get_chat(pubkey).await;
-                        let ok = chat.send_private_message(&nostr_message).await;
-                        if !ok {
+
+                        // If there's an image, send it first
+                        if let Some(img) = &image {
+                            let file = AttachmentFile {
+                                bytes: img.bytes.clone(),
+                                extension: img.extension.clone(),
+                                img_meta: None,
+                            };
+                            let ok_file = chat.send_private_file(Some(file)).await;
+                            if !ok_file {
+                                error!("Error sending image to Nostr user {}", pubkey);
+                            } else {
+                                info!("Sent image to Nostr user: {}", pubkey);
+                            }
+                        }
+
+                        // Send the text content
+                        let ok_text = chat.send_private_message(&nostr_message).await;
+                        if !ok_text {
                             error!("Error sending private message to Nostr user {}", pubkey);
                         } else {
                             info!("Sent Discord message to Nostr user: {}", pubkey);
