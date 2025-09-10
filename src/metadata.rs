@@ -1,8 +1,7 @@
 use anyhow::{Result, anyhow};
-use nostr_sdk::{Client, PublicKey, Metadata, Event, ToBech32, Kind, Filter, Timestamp};
+use vector_sdk::nostr::{Client, PublicKey, Metadata, Event, ToBech32};
 use std::collections::HashMap;
 use std::fs;
-use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime};

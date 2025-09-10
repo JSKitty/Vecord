@@ -10,8 +10,7 @@ authors = ["JSKitty <mail@jskitty.cat>"]
 serenity = { version = "0.12", default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
 
 # Nostr
-nostr-sdk = { version = "0.42", features = ["nip04", "nip06", "nip44", "nip59", "nip96"] }
-vector_sdk = "0.1"
+vector_sdk = "0.2.0"
 
 # Async runtime
 tokio = { version = "1.35", features = ["macros", "rt-multi-thread"] }

@@ -2,9 +2,8 @@ use crate::config::Config;
 use crate::message::{BridgeMessage, NostrMessageMetadata};
 use crate::metadata::{MetadataCache, UserMetadata};
 use anyhow::{Result, anyhow};
-use nostr_sdk::{
-    FromBech32, Keys, Kind, PublicKey, SecretKey, ToBech32,
-    nips::nip59::UnwrappedGift, RelayPoolNotification,
+use vector_sdk::nostr::{
+    FromBech32, Keys, Kind, PublicKey, SecretKey, ToBech32, UnwrappedGift, RelayPoolNotification,
 };
 use std::time::Duration;
 use std::str::FromStr;
@@ -157,13 +156,13 @@ impl NostrClient {
         // Build VectorBot with default metadata (SDK sets up client, metadata and giftwrap subscription)
         let bot = VectorBot::new(
             self.keys.clone(),
-            "Vecord".to_string(),
-            "Vecord".to_string(),
-            "The Vecord Bridge - Bringing the anonymity of Vector to the Discord realm.".to_string(),
+            "Vecord",
+            "Vecord",
+            "The Vecord Bridge - Bringing the anonymity of Vector to the Discord realm.",
             "https://jskitty.cat/vector/img/vecord.png",
             "https://jskitty.cat/vector/img/vecord.png",
-            "".to_string(),
-            "".to_string(),
+            "",
+            "",
         ).await;
 
         // Optionally add user-configured relays on top of SDK defaults
@@ -202,11 +201,7 @@ impl NostrClient {
 
                         // If there's an image, send it first
                         if let Some(img) = &image {
-                            let file = AttachmentFile {
-                                bytes: img.bytes.clone(),
-                                extension: img.extension.clone(),
-                                img_meta: None,
-                            };
+                            let file = AttachmentFile::from_bytes(img.bytes.as_slice());
                             let ok_file = chat.send_private_file(Some(file)).await;
                             if !ok_file {
                                 error!("Error sending image to Nostr user {}", pubkey);

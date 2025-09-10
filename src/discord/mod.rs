@@ -1,7 +1,7 @@
 mod handler;
 
 use crate::config::Config;
-use crate::message::{BridgeMessage, NostrMessageMetadata};
+use crate::message::BridgeMessage;
 use anyhow::Result;
 use serenity::all::{
     ChannelId, Client, Colour, CreateEmbed, CreateEmbedAuthor, CreateMessage, GatewayIntents, Http
